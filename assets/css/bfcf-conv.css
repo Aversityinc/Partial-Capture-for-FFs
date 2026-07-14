@@ -1,0 +1,71 @@
+/**
+ * FlowFormCustomType renders a bare <div>, so our input inherits none of the
+ * conversational theme. Mirror .f-answer input's own rules — the colours and
+ * box-shadow are set per-form by Fluent Forms' generated CSS, which targets
+ * `.f-answer input`, so matching that selector means the user's Design tab
+ * settings apply to us for free.
+ */
+/* [ $ ][ input ][ % ] on one baseline. The affixes are always in the DOM, so the
+   symbol is visible before the visitor types. The wrapper carries the underline so
+   the line runs the full width, under the symbols too. */
+.ff_conv_app .bfcf-number-wrap {
+    display: flex;
+    align-items: baseline;
+    width: 100%;
+    max-width: 100%;
+    box-shadow: currentColor 0 1px;
+    padding-bottom: 8px;
+}
+
+.ff_conv_app .bfcf-number-wrap.bfcf-invalid {
+    box-shadow: #e74c3c 0 2px;
+}
+
+/* A percent field right-aligns its number so the % sits right next to it. */
+.ff_conv_app .bfcf-number-wrap.bfcf-suffixed .bfcf-number {
+    text-align: right;
+}
+
+.ff_conv_app .bfcf-affix {
+    flex: 0 0 auto;
+    font-size: inherit;
+    font-family: inherit;
+    line-height: 1.4;
+    white-space: nowrap;
+    opacity: 0.75;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+}
+
+.ff_conv_app .bfcf-affix-prefix {
+    margin-right: 3px;
+}
+
+.ff_conv_app .bfcf-affix-suffix {
+    margin-left: 3px;
+}
+
+.ff_conv_app .bfcf-number {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    outline: none;
+    box-shadow: none !important;
+    padding: 0;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+    font-size: inherit;
+    font-family: inherit;
+    line-height: 1.4;
+}
+
+.ff_conv_app .bfcf-number-error {
+    margin-top: 8px;
+    font-size: 14px;
+    color: #e74c3c;
+}
