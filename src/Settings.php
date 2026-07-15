@@ -10,8 +10,11 @@ class Settings
 {
     const OPTION = 'bfcf_settings';
 
-    /** The Vue app fires one save per question advance. Faster than this is not a person. */
-    const RATE_LIMIT_PER_MINUTE = 60;
+    /**
+     * We store on every question advance past a checkpoint, so the ceiling has to
+     * clear a fast typist on a long form. Two per second is still well beyond a human.
+     */
+    const RATE_LIMIT_PER_MINUTE = 120;
 
     public static function defaults()
     {

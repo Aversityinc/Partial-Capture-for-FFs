@@ -3,7 +3,7 @@
  * Plugin Name: Partial Capture for Fluent Forms
  * Plugin URI:  https://github.com/Aversityinc/Partial-Capture-for-FFs
  * Description: Captures qualified partial leads from Fluent Forms conversational forms — settle-timer and exit triggers, conditional webhooks, and $/% number formatting.
- * Version:     0.1.2
+ * Version:     0.1.3
  * Author:      Aversity
  * Author URI:  https://github.com/Aversityinc
  * Text Domain: better-fcfs
@@ -15,7 +15,7 @@ if (! defined('ABSPATH')) {
     exit;
 }
 
-define('BFCF_VERSION', '0.1.2');
+define('BFCF_VERSION', '0.1.3');
 define('BFCF_FILE', __FILE__);
 define('BFCF_DIR', plugin_dir_path(__FILE__));
 define('BFCF_URL', plugin_dir_url(__FILE__));

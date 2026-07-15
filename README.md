@@ -1,73 +1,39 @@
 # Partial Capture for Fluent Forms
 
-A WordPress add-on for **Fluent Forms Conversational Forms** (the Typeform-style
-`?fluent-form={id}` renderer). It captures qualified partial leads, sends them to any
-endpoint with conditional webhooks, and adds `$` / `%` formatting to number questions.
+Fluent Forms has a conversational form mode, the kind that shows one question at a time. It looks great, but it has no way to capture people who start the form and leave before they submit. If someone answers a few questions, gives you their phone number, and then closes the tab, that lead is gone.
 
-Works with the **free** Fluent Forms plugin — Fluent Forms Pro is not required.
+Fluent Forms Pro does have a partial entries feature, but only on regular forms, not conversational ones. And even there it just stores the half finished entry in the database. It won't send that data anywhere, so there's no way to push a partial to a webhook or a CRM while the person is still filling things out.
 
-## Features
+This plugin covers both gaps. It captures partial submissions from conversational forms, and it can send them to a webhook as the visitor moves through the form, so you can follow up on the people who didn't finish.
 
-### 1. Partial lead capture
+It works with the free Fluent Forms plugin. You don't need Pro.
 
-Drop a **Partial Store** element into the form editor to mark where a session starts
-counting as a lead. Everything before it is throwaway and never leaves the browser.
+## What it does
 
-Each Partial Store has a **settle timer**. When a visitor passes the checkpoint a
-countdown starts; every further answer restarts it. The partial is captured and its
-webhooks fire once the countdown elapses (they paused) **or** the moment they leave the
-page — whichever comes first, once per checkpoint. Reaching a deeper checkpoint arms a
-fresh countdown; fully submitting cancels it (that's a conversion, linked to the entry).
+### Capture partial leads
 
-Captured partials appear in a **Partial Leads** tab on the form, with status
-(in‑progress / abandoned / converted), stage reached, time on page, answers, per‑feed
-webhook logs with resend, and CSV export.
+You drop a "Partial Store" element into the form wherever you want capture to begin. Anything the person answers before that point stays in their browser and is never sent. Once they get past it, the plugin saves what they've entered so far and keeps the record updated as they keep going. If they pause on the form or leave the page, it sends the partial to whatever webhooks you've set up.
 
-### 2. Conditional webhooks
+You can add more than one Partial Store to a long form to capture at a few different points. Captured leads show up in a "Partial Leads" tab on the form, with the stage they reached, how long they spent, whether they later came back and submitted, and the answers they gave. You can export the whole list to CSV.
 
-Feeds live in Fluent Forms' native **Settings → Integrations** screen, built from the
-same field‑mapping and conditional‑logic UI as a normal integration. Per feed you get:
+### Send partials to a webhook
 
-- **Trigger** — partial (pause / leave) or the long‑inactivity abandonment fallback
-- **URL, method, format** (JSON or form‑encoded) and custom headers
-- **Payload mapping** — any key → smart code
-- **Only send if these fields are FILLED / EMPTY** — the exists / not‑exists gate that
-  Fluent Forms' own conditional logic can't express
-- Native conditional logic, once‑per‑session, enable/disable
+Webhook feeds live in the normal Fluent Forms integrations screen, so setting one up feels the same as any other integration. You map the fields you want to send, choose when it should fire (when someone pauses on a checkpoint, or when they leave the page), and you can send the person's answers along with a few extra bits like which checkpoint they reached, how long they were on the page, and any UTM tags from the landing URL.
 
-Smart codes available in the payload:
+There's one option that matters a lot for partials: you can tell a feed to only send when certain fields are filled in. Most of the answers on a partial are still empty, so this lets you hold off until there is actually a phone number or an email before anything goes out. Fluent Forms' own conditional logic can't express that, which is part of why the plugin ships its own.
 
-| Code | Value |
-|---|---|
-| `{inputs.field_name}` | the visitor's answers so far (raw numbers, e.g. `450000`) |
-| `{bfcf.checkpoint}` `{bfcf.status}` `{bfcf.step}` `{bfcf.seconds}` `{bfcf.partial_id}` `{bfcf.source_url}` `{bfcf.referrer}` | partial metadata |
-| `{bfcf.utm_source}` `{bfcf.utm_medium}` `{bfcf.gclid}` … | UTM / click IDs from the landing URL |
+### Format number fields
 
-Standard Fluent Forms codes (`{ip}`, `{date.Y-m-d}`, `{browser.name}`) work too.
-
-### 3. Number formatting
-
-Three checkboxes on any Number field (conversational forms only):
-
-- Show `$` before the number
-- Show `%` after the number
-- Auto‑format with commas (`1,234,567`)
-
-The visitor sees `$450,000`; the stored value, the entry, and every webhook receive the
-raw `450000`, so Fluent Forms' validation and calculations keep working.
+Three checkboxes on any number field let you show a dollar sign in front, a percent sign after, or comma grouping as the person types. They see $450,000, but the value you store and send stays 450000, so calculations and validation keep working.
 
 ## Requirements
 
-- WordPress with **Fluent Forms** ≥ 5.2 (verified against 5.2 and 6.2)
-- PHP 7.4+
+- Fluent Forms 5.2 or newer (tested on 5.2 and 6.2)
+- PHP 7.4 or newer
 
-## Installation
+## Installing
 
-1. Download this repository as a zip, or clone it into `wp-content/plugins/`.
-2. Activate **Partial Capture for Fluent Forms** in the WordPress Plugins screen.
-3. Open a conversational form → drag in a **Partial Store** element, tick number
-   formatting on any Number field, and add webhook feeds under
-   **Settings → Integrations**.
+Download the latest zip, or clone this repo into your `wp-content/plugins` folder. Activate it, open a conversational form, and add a Partial Store element where you want capture to start. Webhooks are set up under the form's Settings and Integrations screen.
 
 ## License
 

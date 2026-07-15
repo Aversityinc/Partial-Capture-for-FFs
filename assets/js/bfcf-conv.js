@@ -539,16 +539,53 @@
 
         var cp = deepestPassed(formId, cap.step);
         if (!cp) {
-            return; // still before the first checkpoint — nothing to arm
+            return; // still before the first checkpoint — nothing captured yet
         }
 
         if (!cap.checkpoint || cp.name !== cap.checkpoint.name) {
-            // A new, deeper checkpoint — it gets to fire on its own merits.
+            // A new, deeper checkpoint — its webhook gets to fire on its own merits.
             cap.checkpoint = cp;
             cap.firedFor = null;
         }
 
-        armIdle(formId); // any answer (re)starts the countdown
+        // Capture + update the stored row on EVERY answer once they are past a
+        // checkpoint, so the Partial Leads row grows as they move through the form.
+        // This is storage only — no webhook.
+        store(formId);
+
+        // The webhook still fires on the settle timer or on exit.
+        armIdle(formId);
+    }
+
+    function buildBody(formId, reason, dispatch) {
+        var cap = capFor(formId);
+        var cfg = configFor(formId);
+        var body = new FormData();
+        body.set('action', 'bfcf_partial_save');
+        body.set('nonce', cfg.nonce);
+        body.set('form_id', formId);
+        body.set('session', sessionFor(formId));
+        body.set('checkpoint', cap.checkpoint.name);
+        body.set('active_step', cap.step);
+        body.set('data', cap.data);
+        body.set('reason', reason);
+        body.set('dispatch', dispatch ? '1' : '0');
+        body.set('active_seconds', String(activeSeconds()));
+        body.set('total_steps', String(totalSteps(formId)));
+        body.set('source_url', window.location.href);
+        body.set('referrer', document.referrer || '');
+        body.set('utm', JSON.stringify(utm()));
+        return body;
+    }
+
+    // Store / update the partial row. dispatch=0: no webhook.
+    function store(formId) {
+        var cap = capFor(formId);
+        var cfg = configFor(formId);
+        if (!cfg || !cap.checkpoint || cap.converted) {
+            return;
+        }
+        nativeFetch(cfg.ajaxurl, { method: 'POST', body: buildBody(formId, 'progress', false), keepalive: true });
     }
 
     function armIdle(formId) {
@@ -560,7 +597,7 @@
             clearTimeout(cap.timer);
             cap.timer = null;
         }
-        // Already sent for this checkpoint (or converted): don't re-arm on more answers.
+        // Webhook already fired for this checkpoint (or converted): don't re-arm.
         if (cap.converted || cap.firedFor === cap.checkpoint.name) {
             return;
         }
@@ -571,6 +608,7 @@
         }, ms);
     }
 
+    // Fire the webhook (dispatch=1) once per checkpoint, on settle timeout or exit.
     function fire(formId, reason) {
         var cap = capFor(formId);
         var cfg = configFor(formId);
@@ -587,21 +625,7 @@
             cap.timer = null;
         }
 
-        var body = new FormData();
-        body.set('action', 'bfcf_partial_save');
-        body.set('nonce', cfg.nonce);
-        body.set('form_id', formId);
-        body.set('session', sessionFor(formId));
-        body.set('checkpoint', cap.checkpoint.name);
-        body.set('active_step', cap.step);
-        body.set('data', cap.data);
-        body.set('reason', reason);
-        body.set('active_seconds', String(activeSeconds()));
-        body.set('total_steps', String(totalSteps(formId)));
-        body.set('source_url', window.location.href);
-        body.set('referrer', document.referrer || '');
-        body.set('utm', JSON.stringify(utm()));
-
+        var body = buildBody(formId, reason, true);
         if (reason === 'exit' && navigator.sendBeacon) {
             navigator.sendBeacon(cfg.ajaxurl, body);
         } else {

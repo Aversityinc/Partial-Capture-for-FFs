@@ -109,10 +109,13 @@ class Config
     }
 
     /**
-     * Each Partial Store element, with the number of *rendered* questions that
-     * precede it. Conditional logic can hide questions at runtime, so the front
-     * end resolves the real index by field name against the live question list —
-     * this ordinal is only a fallback.
+     * Each Partial Store element, with the names of EVERY field that precedes it —
+     * cumulatively, from the start of the form, not just since the previous marker.
+     * The front end counts how many of those are in the live question path to learn
+     * the checkpoint's position, so the list must be cumulative or a later checkpoint
+     * reads as "passed" almost immediately. Conditional logic can hide questions at
+     * runtime, which is why this is a name list resolved against the live path rather
+     * than a fixed index.
      */
     private static function checkpoints(array $fields)
     {
@@ -139,7 +142,8 @@ class Config
                 'after_fields' => $before,
             ];
 
-            $before = [];
+            // NOTE: $before is intentionally NOT reset — every later checkpoint must
+            // carry the full list of fields before it, so its position is absolute.
         }
 
         return $out;

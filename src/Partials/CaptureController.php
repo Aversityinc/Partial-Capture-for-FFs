@@ -66,12 +66,22 @@ class CaptureController
         $result = Repository::upsert($formId, $session, $this->row($checkpoint, $response));
 
         /**
-         * Real-time trigger. This runs on `shutdown` so the visitor's next
-         * question is never waiting on a third-party endpoint.
+         * Two kinds of call hit this endpoint:
+         *  - progress saves (dispatch=0), fired on every answer past a checkpoint,
+         *    which capture/update the row so it grows as they move through the form;
+         *  - the webhook fire (dispatch=1), on the settle timer or on page exit.
+         * Only the latter queues the feeds. Dispatch runs on `shutdown` so the
+         * visitor's next question never waits on a third-party endpoint.
          */
-        Dispatcher::queue(Dispatcher::TRIGGER_STEP, $result['id']);
+        if ($this->post('dispatch') === '1') {
+            Dispatcher::queue(Dispatcher::TRIGGER_STEP, $result['id']);
+        }
 
-        wp_send_json_success(['stored' => true, 'created' => $result['created']]);
+        wp_send_json_success([
+            'stored'     => true,
+            'created'    => $result['created'],
+            'dispatched' => $this->post('dispatch') === '1',
+        ]);
     }
 
     /**
