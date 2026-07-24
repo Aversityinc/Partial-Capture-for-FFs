@@ -151,7 +151,7 @@ class WebhookIntegration extends IntegrationManagerController
                     'required'  => true,
                     'component' => 'select',
                     'options'   => [
-                        Dispatcher::TRIGGER_STEP      => __('Partial — when they pause on a checkpoint, or leave the page', 'better-fcfs'),
+                        Dispatcher::TRIGGER_STEP      => __('Partial — after they pause or leave, once the grace window passes without a submission', 'better-fcfs'),
                         Dispatcher::TRIGGER_ABANDONED => __('Abandoned — long-inactivity fallback (never submitted)', 'better-fcfs'),
                     ],
                 ],
@@ -221,7 +221,7 @@ class WebhookIntegration extends IntegrationManagerController
                     'label'          => __('Frequency', 'better-fcfs'),
                     'component'      => 'checkbox-single',
                     'checkbox_label' => __('Send only once per visitor session', 'better-fcfs'),
-                    'inline_tip'     => __('Real-time feeds fire on every question the visitor answers past the checkpoint. Tick this to send a single time instead.', 'better-fcfs'),
+                    'inline_tip'     => __('A visitor who pauses, comes back, and pauses again can send this feed more than once (with their answers as of each pause). Tick this to send a single time instead.', 'better-fcfs'),
                 ],
                 [
                     'key'            => 'enabled',

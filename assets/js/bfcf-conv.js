@@ -62,6 +62,23 @@
         return sid;
     }
 
+    /**
+     * A conversion retires its session id. The server has already linked (and
+     * deleted) the partial under the old id during the submit request, so the
+     * next fill in this tab — Fluent Forms' replay, or a visitor sending a second
+     * enquiry — must read as a brand-new lead, not a resurrection of the row
+     * that just became a real entry.
+     */
+    function rotateSession(formId) {
+        var key = 'bfcf_sid_' + formId;
+        var sid = uuid();
+        try {
+            window.sessionStorage.setItem(key, sid);
+        } catch (e) {}
+        document.cookie = key + '=' + encodeURIComponent(sid) + ';path=/;max-age=86400;SameSite=Lax';
+        sessions[formId] = sid;
+    }
+
     /* ------------------------------------------------------------------ *
      * Time on page — only counts while the tab is actually visible, so a form
      * left open in a background tab for an hour doesn't read as engagement.
@@ -408,17 +425,19 @@
     });
 
     /* ------------------------------------------------------------------ *
-     * Partial capture — idle-timer model
+     * Partial capture — idle-signal model
      *
      * Passing a checkpoint arms a countdown equal to that checkpoint's timer.
      * ANY further answer restarts the countdown. When it runs out — meaning they
-     * went quiet — OR when they leave the page, we send the partial, once per
-     * checkpoint. Reaching a DEEPER checkpoint arms a fresh countdown for it;
-     * a full submission cancels everything.
+     * went quiet — OR when they leave the page, we SIGNAL the server (dispatch=1).
+     * The server stamps the row and, after its grace window, the cron sweep sends
+     * the webhook — unless the visitor came back (any progress save clears the
+     * stamp) or submitted for real (the row is deleted). Repeated signals just
+     * slide the stamp, so nothing is ever sent twice for one quiet spell.
      *
      * The Vue app's per-step saves are used only as a client-side signal (the
-     * latest answers, and whether a checkpoint was passed). They never reach the
-     * server — the single server call happens at fire time. So no draft rows, no
+     * latest answers, and whether a checkpoint was passed). They never reach
+     * Fluent Forms — we re-post them to our own endpoint. So no draft rows, no
      * resume/prefill side effects, and this works on free Fluent Forms too.
      * ------------------------------------------------------------------ */
 
@@ -489,7 +508,7 @@
 
     function capFor(formId) {
         if (!caps[formId]) {
-            caps[formId] = { checkpoint: null, data: '', step: 0, timer: null, firedFor: null, converted: false };
+            caps[formId] = { checkpoint: null, data: '', step: 0, timer: null, submitting: false };
         }
         return caps[formId];
     }
@@ -499,6 +518,11 @@
     function isStepSave(init) {
         return init && init.body instanceof FormData &&
             init.body.get('action') === 'fluentform_step_form_save_data';
+    }
+
+    function isSubmit(init) {
+        return init && init.body instanceof FormData &&
+            init.body.get('action') === 'fluentform_submit';
     }
 
     window.fetch = function (input, init) {
@@ -520,8 +544,83 @@
             }));
         }
 
+        if (isSubmit(init)) {
+            return trackSubmit(input, init);
+        }
+
         return nativeFetch(input, init);
     };
+
+    /**
+     * The submit request is the one conversion signal that exists in every flow.
+     * fluentform_submission_success is NOT dispatched when the response carries a
+     * nextAction (payment forms), and its shape has moved between Fluent Forms
+     * versions — but we are already wrapping fetch, so read the answer directly.
+     */
+    function trackSubmit(input, init) {
+        var formId = String(init.body.get('form_id') || '');
+        var cfg = configFor(formId);
+        var cap = cfg && cfg.checkpoints.length ? capFor(formId) : null;
+
+        if (cap) {
+            // Timers and exit beacons hold their fire while the submission is in
+            // flight — a signal sent now would race the conversion server-side.
+            cap.submitting = true;
+            if (cap.timer) {
+                clearTimeout(cap.timer);
+                cap.timer = null;
+            }
+        }
+
+        var pending = nativeFetch(input, init);
+
+        if (cap) {
+            pending.then(function (response) {
+                return response.clone().json();
+            }).then(function (json) {
+                // `result` is the normal success; `nextAction` is the payment /
+                // confirmation flow. Either way the entry has been inserted.
+                if (json && json.data && (json.data.result || json.data.nextAction)) {
+                    convertedNow(formId);
+                } else {
+                    // Validation failed — they are still on the form.
+                    cap.submitting = false;
+                    armIdle(formId);
+                }
+            }).catch(function () {
+                cap.submitting = false;
+                armIdle(formId);
+            });
+        }
+
+        return pending;
+    }
+
+    /**
+     * A conversion ends the capture: kill the pending countdown, retire the
+     * session id, and reset the per-form state so a later fill in this tab
+     * starts a fresh lead. Safe to call more than once — the second call finds
+     * nothing to retire.
+     */
+    function convertedNow(formId) {
+        var cap = capFor(formId);
+
+        if (!cap.checkpoint && !cap.submitting) {
+            return;
+        }
+
+        if (cap.timer) {
+            clearTimeout(cap.timer);
+            cap.timer = null;
+        }
+
+        rotateSession(formId);
+
+        cap.checkpoint = null;
+        cap.data = '';
+        cap.step = 0;
+        cap.submitting = false;
+    }
 
     function handleStep(body) {
         var formId = String(body.get('form_id'));
@@ -530,9 +629,6 @@
         }
 
         var cap = capFor(formId);
-        if (cap.converted) {
-            return;
-        }
 
         cap.data = body.get('data') || '';
         cap.step = body.get('active_step');
@@ -542,18 +638,15 @@
             return; // still before the first checkpoint — nothing captured yet
         }
 
-        if (!cap.checkpoint || cp.name !== cap.checkpoint.name) {
-            // A new, deeper checkpoint — its webhook gets to fire on its own merits.
-            cap.checkpoint = cp;
-            cap.firedFor = null;
-        }
+        cap.checkpoint = cp;
 
         // Capture + update the stored row on EVERY answer once they are past a
         // checkpoint, so the Partial Leads row grows as they move through the form.
-        // This is storage only — no webhook.
+        // The same save doubles as an "I'm still here" — it clears any send that
+        // was waiting out its grace window on the server.
         store(formId);
 
-        // The webhook still fires on the settle timer or on exit.
+        // The webhook signal still goes out on the settle timer or on exit.
         armIdle(formId);
     }
 
@@ -578,28 +671,45 @@
         return body;
     }
 
-    // Store / update the partial row. dispatch=0: no webhook.
+    /**
+     * Post to our endpoint and adopt the server's verdict: it refuses saves for a
+     * session that already converted (this tab missed the submission, or another
+     * tab finished the form), and that refusal is how this tab finds out.
+     */
+    function send(formId, reason, dispatch) {
+        var cfg = configFor(formId);
+
+        nativeFetch(cfg.ajaxurl, { method: 'POST', body: buildBody(formId, reason, dispatch), keepalive: true })
+            .then(function (response) {
+                return response.json();
+            })
+            .then(function (json) {
+                if (json && json.data && json.data.converted) {
+                    convertedNow(formId);
+                }
+            })
+            .catch(function () {});
+    }
+
+    // Store / update the partial row. dispatch=0: no webhook, and it cancels any
+    // send still waiting out its grace window — new answers mean they never left.
     function store(formId) {
         var cap = capFor(formId);
         var cfg = configFor(formId);
-        if (!cfg || !cap.checkpoint || cap.converted) {
+        if (!cfg || !cap.checkpoint || cap.submitting) {
             return;
         }
-        nativeFetch(cfg.ajaxurl, { method: 'POST', body: buildBody(formId, 'progress', false), keepalive: true });
+        send(formId, 'progress', false);
     }
 
     function armIdle(formId) {
         var cap = capFor(formId);
-        if (!cap.checkpoint) {
+        if (!cap.checkpoint || cap.submitting) {
             return;
         }
         if (cap.timer) {
             clearTimeout(cap.timer);
             cap.timer = null;
-        }
-        // Webhook already fired for this checkpoint (or converted): don't re-arm.
-        if (cap.converted || cap.firedFor === cap.checkpoint.name) {
-            return;
         }
 
         var ms = Math.max(0, (cap.checkpoint.min_seconds || 0) * 1000);
@@ -608,38 +718,34 @@
         }, ms);
     }
 
-    // Fire the webhook (dispatch=1) once per checkpoint, on settle timeout or exit.
+    // Signal the webhook send (dispatch=1) on settle timeout or exit. The server
+    // stamps the row's grace clock; repeated signals only slide the stamp, so a
+    // tab that hides and shows five times still produces a single send.
     function fire(formId, reason) {
         var cap = capFor(formId);
         var cfg = configFor(formId);
-        if (!cfg || !cap.checkpoint || cap.converted) {
+        if (!cfg || !cap.checkpoint || cap.submitting) {
             return;
         }
-        if (cap.firedFor === cap.checkpoint.name) {
-            return; // once per checkpoint
-        }
 
-        cap.firedFor = cap.checkpoint.name;
         if (cap.timer) {
             clearTimeout(cap.timer);
             cap.timer = null;
         }
 
-        var body = buildBody(formId, reason, true);
         if (reason === 'exit' && navigator.sendBeacon) {
-            navigator.sendBeacon(cfg.ajaxurl, body);
+            navigator.sendBeacon(cfg.ajaxurl, buildBody(formId, reason, true));
         } else {
-            nativeFetch(cfg.ajaxurl, { method: 'POST', body: body, keepalive: true });
+            send(formId, reason, true);
         }
     }
 
-    // Leaving the page (closing, or switching away) sends the pending partial right
-    // away instead of waiting out the rest of the countdown. Once per checkpoint, so
-    // a partial that already fired on idle is not sent twice.
+    // Leaving the page (closing, or switching away) signals the pending partial
+    // right away instead of waiting out the rest of the countdown.
     function fireAllOnExit() {
         Object.keys(caps).forEach(function (formId) {
             var cap = caps[formId];
-            if (cap.checkpoint && !cap.converted && cap.firedFor !== cap.checkpoint.name) {
+            if (cap.checkpoint && !cap.submitting) {
                 fire(formId, 'exit');
             }
         });
@@ -652,19 +758,14 @@
     });
     window.addEventListener('pagehide', fireAllOnExit);
 
-    // A full submission is a conversion, not a partial: cancel any pending countdown
-    // so nothing fires. The server links the entry to an already-fired partial (if any)
-    // via the session cookie at fluentform/submission_inserted.
+    // Fluent Forms' own success event is a second signal of the conversion
+    // trackSubmit() already caught — kept because it is the only one we would
+    // still see if a future Fluent Forms moves its submit off fetch().
     document.body.addEventListener('fluentform_submission_success', function (e) {
         var formId = e.detail && e.detail.form_id;
         var ids = formId ? [String(formId)] : Object.keys(caps);
         ids.forEach(function (id) {
-            var cap = capFor(id);
-            cap.converted = true;
-            if (cap.timer) {
-                clearTimeout(cap.timer);
-                cap.timer = null;
-            }
+            convertedNow(String(id));
         });
     });
 })();

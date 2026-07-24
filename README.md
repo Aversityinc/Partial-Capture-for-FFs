@@ -12,9 +12,13 @@ It works with the free Fluent Forms plugin. You don't need Pro.
 
 ### Capture partial leads
 
-You drop a "Partial Store" element into the form wherever you want capture to begin. Anything the person answers before that point stays in their browser and is never sent. Once they get past it, the plugin saves what they've entered so far and keeps the record updated as they keep going. If they pause on the form or leave the page, it sends the partial to whatever webhooks you've set up.
+You drop a "Partial Store" element into the form wherever you want capture to begin. Anything the person answers before that point stays in their browser and is never sent. Once they get past it, the plugin saves what they've entered so far and keeps the record updated as they keep going.
 
-You can add more than one Partial Store to a long form to capture at a few different points. Captured leads show up in a "Partial Leads" tab on the form, with the stage they reached, how long they spent, whether they later came back and submitted, and the answers they gave. You can export the whole list to CSV.
+If they pause on the form or leave the page, the partial is queued for your webhooks — and by default it is held for a short grace window (3 minutes, configurable) before it actually goes out. If the person comes back and keeps answering, or finishes and submits, the queued send is cancelled. That grace window is what stops the classic double-submission problem, where a CRM receives someone as a "partial lead" seconds before their real submission arrives. Set the window to 0 if you'd rather have the webhook the moment they pause.
+
+A partial that turns into a real submission is removed from the partial list entirely — from that moment it lives in Fluent Forms' own Entries, and nothing about it is ever sent as a partial again.
+
+You can add more than one Partial Store to a long form to capture at a few different points. Captured leads show up in a "Partial Leads" tab on the form, with the stage they reached, how long they spent, and the answers they gave. You can export the whole list to CSV.
 
 ### Send partials to a webhook
 

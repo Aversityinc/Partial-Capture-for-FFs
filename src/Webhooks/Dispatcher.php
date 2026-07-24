@@ -53,8 +53,16 @@ class Dispatcher
 
     public static function dispatch($trigger, $partialId)
     {
+        // The queue is flushed on shutdown / from cron, so re-read fresh: a row
+        // deleted by a conversion in the meantime bails right here, and the
+        // status check below catches pre-v2 leftovers that were flagged
+        // 'converted' instead of deleted.
         $partial = Repository::find($partialId);
         if (! $partial) {
+            return;
+        }
+
+        if ($partial->status === Repository::CONVERTED) {
             return;
         }
 

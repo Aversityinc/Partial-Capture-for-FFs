@@ -104,7 +104,7 @@ class PartialStore extends BaseFieldManager
         $settings['bfcf_min_seconds'] = [
             'template'  => 'inputText',
             'label'     => __('Settle timer (seconds)', 'better-fcfs'),
-            'help_text' => __('After the visitor passes this point, wait this many seconds of no further answers before sending the partial. Each new answer restarts the countdown. Reaching a later Partial Store, or fully submitting, cancels it; leaving the page sends it immediately. 0 = send as soon as they pass this point.', 'better-fcfs'),
+            'help_text' => __('After the visitor passes this point, this many seconds of no further answers marks them as paused (leaving the page marks it immediately; each new answer restarts the countdown). The partial webhook then goes out after the grace window on the Partial Leads screen — and is cancelled if they resume or submit in the meantime. 0 = mark as paused as soon as they pass this point.', 'better-fcfs'),
         ];
 
         return $settings;

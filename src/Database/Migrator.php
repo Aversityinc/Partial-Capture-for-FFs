@@ -14,7 +14,7 @@ if (! defined('ABSPATH')) {
  */
 class Migrator
 {
-    const DB_VERSION = 1;
+    const DB_VERSION = 2;
 
     const OPTION_KEY = 'bfcf_db_version';
 
@@ -63,6 +63,7 @@ class Migrator
             `total_steps` INT UNSIGNED NOT NULL DEFAULT 0,
             `last_field` VARCHAR(191) NULL,
             `active_seconds` INT UNSIGNED NOT NULL DEFAULT 0,
+            `dispatch_after` TIMESTAMP NULL,
             `status` VARCHAR(20) NOT NULL DEFAULT 'active',
             `submission_id` BIGINT(20) UNSIGNED NULL,
             `converted_at` TIMESTAMP NULL,
@@ -98,6 +99,12 @@ class Migrator
             KEY `bfcf_partial` (`partial_id`),
             KEY `bfcf_form` (`form_id`)
         ) {$charset};");
+
+        // v2: a conversion now DELETES its partial row instead of flagging it, so
+        // rows flagged by older versions are leftovers of the model this replaced.
+        // Idempotent — nothing writes 'converted' any more.
+        $wpdb->query("DELETE FROM {$logs} WHERE partial_id IN (SELECT id FROM {$partials} WHERE status = 'converted')");
+        $wpdb->query("DELETE FROM {$partials} WHERE status = 'converted'");
 
         update_option(self::OPTION_KEY, self::DB_VERSION, false);
     }

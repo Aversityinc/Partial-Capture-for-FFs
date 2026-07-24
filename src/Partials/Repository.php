@@ -35,7 +35,7 @@ class Repository
     }
 
     /**
-     * @return array{id:int,created:bool}
+     * @return array{id:int,created:bool,converted:bool}
      */
     public static function upsert($formId, $session, array $data)
     {
@@ -46,10 +46,11 @@ class Repository
         $existing = self::findBySession($formId, $session);
 
         if ($existing) {
-            // A converted row is terminal. A late beacon must not resurrect it
-            // and hand it back to the abandonment sweep.
+            // A converted row is terminal (pre-v2 leftover — conversions delete
+            // now). A late beacon must not resurrect it and hand it back to the
+            // abandonment sweep.
             if ($existing->status === self::CONVERTED) {
-                return ['id' => (int) $existing->id, 'created' => false];
+                return ['id' => (int) $existing->id, 'created' => false, 'converted' => true];
             }
 
             // Going back a question must not walk the recorded stage backwards —
@@ -66,7 +67,7 @@ class Repository
                 ['id' => $existing->id]
             );
 
-            return ['id' => (int) $existing->id, 'created' => false];
+            return ['id' => (int) $existing->id, 'created' => false, 'converted' => false];
         }
 
         $wpdb->insert($table, array_merge($data, [
@@ -79,22 +80,36 @@ class Repository
             'updated_at'       => $now,
         ]));
 
-        return ['id' => (int) $wpdb->insert_id, 'created' => true];
+        return ['id' => (int) $wpdb->insert_id, 'created' => true, 'converted' => false];
     }
 
-    public static function markConverted($id, $submissionId)
+    /**
+     * Rows whose grace window has run out: a webhook send was signalled
+     * (settle timer or page exit) and nothing has happened since — no new
+     * answers (those null the stamp) and no conversion (that deletes the row).
+     */
+    public static function due($limit = 50)
     {
         global $wpdb;
-        $now = current_time('mysql');
+        $table = Migrator::partialsTable();
+
+        return $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table}
+             WHERE status = %s AND dispatch_after IS NOT NULL AND dispatch_after <= %s
+             ORDER BY dispatch_after ASC LIMIT %d",
+            self::ACTIVE,
+            current_time('mysql'),
+            $limit
+        ));
+    }
+
+    public static function clearDispatch($id)
+    {
+        global $wpdb;
 
         $wpdb->update(
             Migrator::partialsTable(),
-            [
-                'status'        => self::CONVERTED,
-                'submission_id' => $submissionId,
-                'converted_at'  => $now,
-                'updated_at'    => $now,
-            ],
+            ['dispatch_after' => null],
             ['id' => $id]
         );
     }

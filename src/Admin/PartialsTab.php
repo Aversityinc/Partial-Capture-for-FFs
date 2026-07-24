@@ -107,8 +107,9 @@ class PartialsTab
         check_admin_referer('bfcf_settings');
 
         Settings::save([
-            'abandon_after_minutes' => $_POST['abandon_after_minutes'] ?? 15,
-            'retention_days'        => $_POST['retention_days'] ?? 90,
+            'abandon_after_minutes'  => $_POST['abandon_after_minutes'] ?? 15,
+            'retention_days'         => $_POST['retention_days'] ?? 90,
+            'dispatch_grace_minutes' => $_POST['dispatch_grace_minutes'] ?? 3,
         ]);
 
         wp_safe_redirect($this->tabUrl((int) $_POST['form_id'], ['saved' => 1]));
@@ -163,7 +164,7 @@ class PartialsTab
         $out = fopen('php://output', 'w');
 
         fputcsv($out, array_merge(
-            ['id', 'status', 'checkpoint', 'step', 'total_steps', 'seconds', 'submission_id', 'source_url', 'referrer', 'created_at'],
+            ['id', 'status', 'checkpoint', 'step', 'total_steps', 'seconds', 'source_url', 'referrer', 'created_at'],
             $keys
         ));
 
@@ -183,7 +184,6 @@ class PartialsTab
                 $row->max_step,
                 $row->total_steps,
                 $row->active_seconds,
-                $row->submission_id,
                 $row->source_url,
                 $row->referrer,
                 $row->created_at,

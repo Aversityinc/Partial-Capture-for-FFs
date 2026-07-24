@@ -44,6 +44,14 @@ class CaptureController
             wp_send_json_error(['message' => 'bad session'], 400);
         }
 
+        // The session already turned into a real entry: Conversion::link() set
+        // this marker during the submit request. Whatever arrives now is a stale
+        // timer or beacon that raced the submission — refuse it, and tell the
+        // client so it retires the session on its side too.
+        if (Conversion::hasConverted($formId, $session)) {
+            wp_send_json_success(['stored' => false, 'converted' => true]);
+        }
+
         if (! $this->withinRateLimit($session)) {
             wp_send_json_error(['message' => 'slow down'], 429);
         }
@@ -63,24 +71,42 @@ class CaptureController
             wp_send_json_success(['stored' => false]);
         }
 
-        $result = Repository::upsert($formId, $session, $this->row($checkpoint, $response));
-
         /**
          * Two kinds of call hit this endpoint:
-         *  - progress saves (dispatch=0), fired on every answer past a checkpoint,
-         *    which capture/update the row so it grows as they move through the form;
-         *  - the webhook fire (dispatch=1), on the settle timer or on page exit.
-         * Only the latter queues the feeds. Dispatch runs on `shutdown` so the
-         * visitor's next question never waits on a third-party endpoint.
+         *  - progress saves (dispatch=0), fired on every answer past a checkpoint.
+         *    They capture/update the row — and null the grace stamp, because new
+         *    answers mean the visitor never actually left;
+         *  - webhook signals (dispatch=1), on the settle timer or on page exit.
+         *    With a grace window configured these only stamp dispatch_after; the
+         *    cron sweep sends once the window passes with no conversion and no
+         *    further activity. Repeat signals slide the stamp rather than stack.
+         * With the grace window set to 0 a signal queues the feeds immediately
+         * (on `shutdown`, so the visitor never waits on a third-party endpoint).
          */
-        if ($this->post('dispatch') === '1') {
+        $dispatch = $this->post('dispatch') === '1';
+        $grace = max(0, (int) Settings::get('dispatch_grace_minutes'));
+
+        $row = $this->row($checkpoint, $response);
+        $row['dispatch_after'] = ($dispatch && $grace > 0)
+            ? gmdate('Y-m-d H:i:s', current_time('timestamp') + $grace * MINUTE_IN_SECONDS)
+            : null;
+
+        $result = Repository::upsert($formId, $session, $row);
+
+        if ($result['converted']) {
+            wp_send_json_success(['stored' => false, 'converted' => true]);
+        }
+
+        if ($dispatch && $grace === 0) {
             Dispatcher::queue(Dispatcher::TRIGGER_STEP, $result['id']);
         }
 
         wp_send_json_success([
             'stored'     => true,
             'created'    => $result['created'],
-            'dispatched' => $this->post('dispatch') === '1',
+            'converted'  => false,
+            'scheduled'  => $dispatch && $grace > 0,
+            'dispatched' => $dispatch && $grace === 0,
         ]);
     }
 

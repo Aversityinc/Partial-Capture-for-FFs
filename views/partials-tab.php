@@ -22,7 +22,6 @@ $statuses = [
     ''                        => __('All', 'better-fcfs'),
     Repository::ACTIVE        => __('In progress', 'better-fcfs'),
     Repository::ABANDONED     => __('Abandoned', 'better-fcfs'),
-    Repository::CONVERTED     => __('Converted', 'better-fcfs'),
 ];
 ?>
 
@@ -57,7 +56,7 @@ $statuses = [
     <div class="bfcf-header">
         <h1 class="bfcf-title"><?php esc_html_e('Partial Leads', 'better-fcfs'); ?></h1>
         <p class="bfcf-sub">
-            <?php esc_html_e('Visitors who got past a Partial Store element and stopped. Drop that element into the form editor to choose where a session starts counting as a lead — nothing before it is stored.', 'better-fcfs'); ?>
+            <?php esc_html_e('Visitors who got past a Partial Store element and stopped. Drop that element into the form editor to choose where a session starts counting as a lead — nothing before it is stored. A lead that goes on to submit the form is removed from this list automatically: it lives in Entries from that moment on.', 'better-fcfs'); ?>
         </p>
     </div>
 
@@ -110,12 +109,7 @@ $statuses = [
             <tr>
                 <td><?php echo (int) $row->id; ?></td>
                 <td>
-                    <?php if ($row->status === Repository::CONVERTED) : ?>
-                        <span style="color:#1a7efb;font-weight:600"><?php esc_html_e('Converted', 'better-fcfs'); ?></span><br>
-                        <a href="<?php echo esc_url(admin_url('admin.php?page=fluent_forms&route=entries&form_id=' . $formId . '#/entries/' . $row->submission_id)); ?>">
-                            <?php printf(esc_html__('Entry #%d', 'better-fcfs'), (int) $row->submission_id); ?>
-                        </a>
-                    <?php elseif ($row->status === Repository::ABANDONED) : ?>
+                    <?php if ($row->status === Repository::ABANDONED) : ?>
                         <span style="color:#d63638;font-weight:600"><?php esc_html_e('Abandoned', 'better-fcfs'); ?></span>
                     <?php else : ?>
                         <span style="color:#996800"><?php esc_html_e('In progress', 'better-fcfs'); ?></span>
@@ -205,6 +199,18 @@ $statuses = [
         <input type="hidden" name="form_id" value="<?php echo (int) $formId; ?>">
 
         <table class="form-table">
+            <tr>
+                <th scope="row">
+                    <label for="bfcf_grace"><?php esc_html_e('Hold webhooks for', 'better-fcfs'); ?></label>
+                </th>
+                <td>
+                    <input id="bfcf_grace" name="dispatch_grace_minutes" type="number" min="0" class="small-text"
+                           value="<?php echo esc_attr($settings['dispatch_grace_minutes']); ?>"> <?php esc_html_e('minutes before sending', 'better-fcfs'); ?>
+                    <p class="description">
+                        <?php esc_html_e('When a visitor pauses or leaves, the partial webhook waits this long before going out. If they come back and keep answering, or submit the form, the send is cancelled — this is what prevents a partial and a full submission both reaching your CRM. 0 sends immediately.', 'better-fcfs'); ?>
+                    </p>
+                </td>
+            </tr>
             <tr>
                 <th scope="row">
                     <label for="bfcf_abandon"><?php esc_html_e('Mark as abandoned after', 'better-fcfs'); ?></label>

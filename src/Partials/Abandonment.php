@@ -49,16 +49,38 @@ class Abandonment
     }
 
     /**
-     * A partial goes quiet and never converts => it's an abandoned lead.
+     * Two queues, one clock.
      *
-     * The grace period matters: fire too eagerly and you spam the CRM about
-     * someone who is simply reading the next question.
+     * Step sends wait out the grace window here rather than firing from the
+     * browser: if the visitor converted or answered again in the meantime, there
+     * is nothing left to send. Abandonment stays the long-inactivity fallback.
+     *
+     * Both passes re-check the conversion flag before queueing anything — a row
+     * can slip past link()'s deletes when its save was in flight during the
+     * submission, and this is where such a straggler finally dies.
      */
     public function sweep()
     {
+        foreach (Repository::due() as $row) {
+            if (Conversion::hasConverted($row->form_id, $row->session_hash)) {
+                Repository::delete($row->id, $row->form_id);
+                continue;
+            }
+
+            // Clear before queueing: a failed send is visible in the logs and can
+            // be resent by hand, but it must not retry on every sweep forever.
+            Repository::clearDispatch($row->id);
+            Dispatcher::queue(Dispatcher::TRIGGER_STEP, $row->id);
+        }
+
         $minutes = (int) Settings::get('abandon_after_minutes');
 
         foreach (Repository::stale($minutes) as $row) {
+            if (Conversion::hasConverted($row->form_id, $row->session_hash)) {
+                Repository::delete($row->id, $row->form_id);
+                continue;
+            }
+
             Repository::markAbandoned($row->id);
             Dispatcher::queue(Dispatcher::TRIGGER_ABANDONED, $row->id);
         }
